@@ -1,0 +1,6 @@
+streamlit
+pandas
+fpdf
+openpyxl
+matplotlib
+python-multipart
