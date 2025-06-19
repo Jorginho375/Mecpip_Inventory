@@ -4,4 +4,3 @@ fpdf
 openpyxl
 matplotlib
 python-multipart
-flask
