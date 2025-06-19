@@ -96,7 +96,7 @@ if menu == "Ajouter un équipement":
             departement = st.text_input("Département")
         with col2:
             utilisateur = st.text_input("Utilisateur")
-            date_achat = st.date_input("Date Achat")
+            date_achat = st.date_input("Date de Mise en Service")
             statut = st.selectbox("Statut", ["Actif", "HS"])
         with col3:
             serial = st.text_input("N° Série")
