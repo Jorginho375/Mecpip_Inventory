@@ -1,157 +1,120 @@
-# MECPIP Inventory Streamlit Version
-# Converted from Flask to Streamlit for Streamlit Cloud compatibility
-
 import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
 from io import BytesIO
 from fpdf import FPDF
-import os
+import plotly.express as px
 
-DB_NAME = "inventory.db"
+st.set_page_config(page_title="Inventaire MECPIP", layout="wide")
 
-# ========== Initialize Database ==========
-def init_db():
-    with sqlite3.connect(DB_NAME) as conn:
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS computers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                type TEXT,
-                department TEXT,
-                user TEXT,
-                purchase_date TEXT,
-                status TEXT,
-                serial_number TEXT,
-                antivirus TEXT,
-                domain_joined TEXT
-            )
-        """)
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS movements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                computer_id INTEGER,
-                user TEXT,
-                department TEXT,
-                date TEXT,
-                FOREIGN KEY (computer_id) REFERENCES computers(id)
-            )
-        """)
-        conn.commit()
+# Initialisation de la base de données
+conn = sqlite3.connect("inventory.db", check_same_thread=False)
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS computers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    type TEXT,
+    department TEXT,
+    user TEXT,
+    purchase_date TEXT,
+    status TEXT,
+    serial_number TEXT,
+    antivirus TEXT,
+    domain_joined TEXT
+)''')
+conn.commit()
 
-# ========== Add Equipment Entry ==========
-def add_equipment(data):
-    with sqlite3.connect(DB_NAME) as conn:
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO computers (name, type, department, user, purchase_date, status, serial_number, antivirus, domain_joined)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", data)
-        cid = c.lastrowid
-        c.execute("""
-            INSERT INTO movements (computer_id, user, department, date)
-            VALUES (?, ?, ?, ?)""", (cid, data[3], data[2], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-        conn.commit()
+def insert_data(name, type_, department, user, purchase_date, status, serial_number, antivirus, domain_joined):
+    c.execute("""
+        INSERT INTO computers (name, type, department, user, purchase_date, status, serial_number, antivirus, domain_joined)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, type_, department, user, purchase_date, status, serial_number, antivirus, domain_joined))
+    conn.commit()
 
-# ========== Load Data ==========
-def load_data():
-    with sqlite3.connect(DB_NAME) as conn:
-        df = pd.read_sql_query("SELECT * FROM computers", conn)
-        m = pd.read_sql_query("""
-            SELECT c.name AS poste, m.user, m.department, m.date
-            FROM movements m JOIN computers c ON m.computer_id = c.id
-            ORDER BY m.date DESC
-        """, conn)
-    return df, m
+def get_filtered_data(dept):
+    if dept and dept != "Tous":
+        return pd.read_sql_query("SELECT * FROM computers WHERE department = ?", conn, params=(dept,))
+    return pd.read_sql_query("SELECT * FROM computers", conn)
 
-# ========== Export PDF ==========
-def export_pdf(data):
+def export_pdf(df):
     class PDF(FPDF):
         def header(self):
-            logo_path = os.path.join("static", "logo.jpg")
-            if os.path.exists(logo_path):
-                self.image(logo_path, 10, 8, 33)
-            self.set_font("Arial", "B", 12)
-            self.cell(0, 10, "Inventaire Informatique - MECPIP", ln=1, align="C")
-            self.set_font("Arial", "", 10)
-            self.cell(0, 10, f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=1, align="C")
-            self.ln(5)
+            self.image("static/logo.jpg", 10, 8, 25)
+            self.set_font("Arial", 'B', 14)
+            self.cell(0, 10, "INVENTAIRE INFORMATIQUE - MECPIP", ln=True, align="C")
+            self.ln(10)
 
         def footer(self):
             self.set_y(-15)
-            self.set_font("Arial", "I", 8)
-            self.cell(0, 10, f"Page {self.page_no()}", align="C")
+            self.set_font("Arial", 'I', 8)
+            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-        def table(self, data):
-            self.set_font("Arial", "B", 9)
-            col_widths = [8, 28, 20, 25, 25, 20, 15, 28, 15, 15]
-            headers = ["#", "Nom", "Type", "Département", "Utilisateur", "Date Achat", "Statut", "Numéro de série", "AV", "Domaine"]
+        def render_table(self, df):
+            self.set_font("Arial", size=9)
+            col_widths = [25, 20, 25, 25, 20, 20, 30, 15, 15]
+            headers = ["Nom", "Type", "Département", "Utilisateur", "Achat", "Statut", "N° Série", "AV", "Domaine"]
             for i, header in enumerate(headers):
-                self.cell(col_widths[i], 7, header, border=1, align="C")
+                self.cell(col_widths[i], 8, header, 1)
             self.ln()
-            self.set_font("Arial", "", 9)
-            for _, row in data.iterrows():
-                values = [row['id'], row['name'], row['type'], row['department'], row['user'], row['purchase_date'], row['status'], row['serial_number'], row['antivirus'], row['domain_joined']]
-                for i in range(len(headers)):
-                    self.cell(col_widths[i], 6, str(values[i])[:25], border=1)
+            for index, row in df.iterrows():
+                row_data = row[1:]
+                for i, item in enumerate(row_data):
+                    self.cell(col_widths[i], 6, str(item)[:25], 1)
                 self.ln()
 
     pdf = PDF()
     pdf.add_page()
-    pdf.table(data)
+    pdf.render_table(df)
     output = BytesIO()
     pdf.output(output)
     output.seek(0)
     return output
 
-# ========== Main App ==========
-init_db()
-st.set_page_config(layout="wide")
-st.title("📋 Inventaire Informatique - MECPIP")
+# Sidebar
+st.sidebar.image("static/logo.jpg", width=150)
+st.sidebar.title("📊 Inventaire MECPIP")
+menu = st.sidebar.radio("Navigation", ["Dashboard", "Ajouter un équipement"])
 
-# Formulaire d'ajout
-with st.form("add_form"):
-    st.subheader("Ajouter un équipement")
-    cols = st.columns(4)
-    name = cols[0].text_input("Nom du poste")
-    type_ = cols[1].selectbox("Type", ["Laptop", "Desktop", "Imprimante", "Scanner", "Copieur", "Projecteur", "Écran", "Onduleur", "Serveur", "Switch", "Routeur", "Pare-Feu"])
-    dept = cols[2].text_input("Département")
-    user = cols[3].text_input("Utilisateur")
+if menu == "Ajouter un équipement":
+    st.markdown("## ➕ Ajouter un nouvel équipement")
+    with st.form("add_form"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            name = st.text_input("Nom du poste")
+            type_ = st.selectbox("Type", ["Laptop", "Desktop", "Imprimante", "Scanner", "Copieur", "Projecteur", "Écran", "Onduleur", "Serveur", "Switch", "Routeur", "Pare-Feu"])
+            status = st.selectbox("Statut", ["Actif", "HS"])
+        with col2:
+            department = st.text_input("Département")
+            user = st.text_input("Utilisateur")
+            serial_number = st.text_input("Numéro de série")
+        with col3:
+            purchase_date = st.date_input("Date d'achat")
+            antivirus = st.radio("Antivirus installé", ["Oui", "Non"])
+            domain_joined = st.radio("Intégré au domaine", ["Oui", "Non"])
 
-    cols2 = st.columns(4)
-    date = cols2[0].date_input("Date d'achat")
-    status = cols2[1].selectbox("Statut", ["Actif", "HS"])
-    serial = cols2[2].text_input("Numéro de série")
-    av = cols2[3].selectbox("Antivirus installé", ["Oui", "Non"])
-    domain = st.selectbox("Intégré au domaine", ["Oui", "Non"])
+        submitted = st.form_submit_button("Enregistrer")
+        if submitted:
+            insert_data(name, type_, department, user, str(purchase_date), status, serial_number, antivirus, domain_joined)
+            st.success("✅ Équipement enregistré avec succès.")
 
-    submitted = st.form_submit_button("Ajouter")
-    if submitted:
-        add_equipment((name, type_, dept, user, date.strftime('%Y-%m-%d'), status, serial, av, domain))
-        st.success("Équipement ajouté avec succès.")
+if menu == "Dashboard":
+    st.markdown("# 📋 Tableau de bord de l'inventaire")
 
-# Affichage
-df, movements = load_data()
+    dept_filter = st.selectbox("Filtrer par département", ["Tous"] + [row[0] for row in c.execute("SELECT DISTINCT department FROM computers").fetchall()])
+    df = get_filtered_data(dept_filter)
 
-col1, col2, col3 = st.columns([1,1,2])
-with col1:
-    st.download_button("⬇️ Export Excel", data=df.to_excel(index=False), file_name="inventaire.xlsx")
-with col2:
-    pdf_data = export_pdf(df)
-    st.download_button("⬇️ Export PDF", data=pdf_data, file_name="Inventaire_MECPIP.pdf")
-with col3:
-    st.write(" ")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.dataframe(df, use_container_width=True)
+    with col2:
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False)
+        st.download_button("⬇️ Export Excel", data=buffer.getvalue(), file_name="inventaire.xlsx")
+        st.download_button("⬇️ Export PDF", data=export_pdf(df), file_name="inventaire.pdf")
 
-st.subheader("📊 Statistiques")
-col1, col2 = st.columns(2)
-with col1:
-    st.bar_chart(df['department'].value_counts())
-with col2:
-    st.plotly_chart(pd.DataFrame(df['type'].value_counts()).plot.pie(y='type', figsize=(5,5), legend=False).figure)
-
-st.subheader("📌 Liste des équipements")
-st.dataframe(df)
-
-st.subheader("📎 Historique des mouvements")
-st.dataframe(movements)
+    if not df.empty:
+        st.markdown("## 📊 Graphique par Type de Matériel")
+        pie_chart = px.pie(df, names='type', title='Répartition par type')
+        st.plotly_chart(pie_chart, use_container_width=True)
