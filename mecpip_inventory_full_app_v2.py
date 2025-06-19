@@ -76,45 +76,79 @@ st.sidebar.image("static/logo.jpg", width=150)
 st.sidebar.title("📊 Inventaire MECPIP")
 menu = st.sidebar.radio("Navigation", ["Dashboard", "Ajouter un équipement"])
 
-if menu == "Ajouter un équipement":
-    st.markdown("## ➕ Ajouter un nouvel équipement")
-    with st.form("add_form"):
+# Formulaire d'ajout
+with st.expander("Ajouter un équipement"):
+    with st.form("ajout_form"):
         col1, col2, col3 = st.columns(3)
         with col1:
-            name = st.text_input("Nom du poste")
+            nom = st.text_input("Nom")
             type_ = st.selectbox("Type", ["Laptop", "Desktop", "Imprimante", "Scanner", "Copieur", "Projecteur", "Écran", "Onduleur", "Serveur", "Switch", "Routeur", "Pare-Feu"])
-            status = st.selectbox("Statut", ["Actif", "HS"])
+            departement = st.text_input("Département")
         with col2:
-            department = st.text_input("Département")
-            user = st.text_input("Utilisateur")
-            serial_number = st.text_input("Numéro de série")
+            utilisateur = st.text_input("Utilisateur")
+            date_achat = st.date_input("Date Achat")
+            statut = st.selectbox("Statut", ["Actif", "HS"])
         with col3:
-            purchase_date = st.date_input("Date d'achat")
-            antivirus = st.radio("Antivirus installé", ["Oui", "Non"])
-            domain_joined = st.radio("Intégré au domaine", ["Oui", "Non"])
+            serial = st.text_input("N° Série")
+            antivirus = st.selectbox("Antivirus installé", ["Oui", "Non"])
+            domaine = st.selectbox("Intégré au domaine", ["Oui", "Non"])
 
         submitted = st.form_submit_button("Enregistrer")
         if submitted:
-            insert_data(name, type_, department, user, str(purchase_date), status, serial_number, antivirus, domain_joined)
-            st.success("✅ Équipement enregistré avec succès.")
+            df.loc[len(df)] = [nom, type_, departement, utilisateur, date_achat, statut, serial, antivirus, domaine]
+            st.success("Équipement ajouté avec succès")
 
-if menu == "Dashboard":
-    st.markdown("# 📋 Tableau de bord de l'inventaire")
+# Filtres
+st.sidebar.header("Filtres")
+filtre_dept = st.sidebar.multiselect("Filtrer par département", options=df["Departement"].unique())
+if filtre_dept:
+    filtered_df = df[df["Departement"].isin(filtre_dept)]
+else:
+    filtered_df = df
 
-    dept_filter = st.selectbox("Filtrer par département", ["Tous"] + [row[0] for row in c.execute("SELECT DISTINCT department FROM computers").fetchall()])
-    df = get_filtered_data(dept_filter)
+# Affichage
+st.subheader("Liste des équipements")
+st.dataframe(filtered_df, use_container_width=True)
 
-    col1, col2 = st.columns([2, 1])
+# Graphiques
+st.subheader("Statistiques")
+if not filtered_df.empty:
+    col1, col2 = st.columns(2)
     with col1:
-        st.dataframe(df, use_container_width=True)
+        fig_type = px.pie(filtered_df, names="Type", title="Répartition par type")
+        st.plotly_chart(fig_type)
     with col2:
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False)
-        st.download_button("⬇️ Export Excel", data=buffer.getvalue(), file_name="inventaire.xlsx")
-        st.download_button("⬇️ Export PDF", data=export_pdf(df), file_name="inventaire.pdf")
+        fig_dept = px.histogram(filtered_df, x="Departement", title="Nombre par département")
+        st.plotly_chart(fig_dept)
 
-    if not df.empty:
-        st.markdown("## 📊 Graphique par Type de Matériel")
-        pie_chart = px.pie(df, names='type', title='Répartition par type')
-        st.plotly_chart(pie_chart, use_container_width=True)
+# Export Excel
+excel_buffer = BytesIO()
+filtered_df.to_excel(excel_buffer, index=False, engine="openpyxl")
+excel_buffer.seek(0)
+st.download_button("⬇️ Export Excel", data=excel_buffer, file_name="inventaire.xlsx")
+
+# Export PDF
+def export_pdf(df):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "Inventaire MECPIP", ln=True, align="C")
+
+    pdf.set_font("Arial", size=10)
+    pdf.ln(10)
+
+    # En-tête
+    for col in df.columns:
+        pdf.cell(30, 10, str(col), 1)
+    pdf.ln()
+
+    # Contenu
+    for _, row in df.iterrows():
+        for val in row:
+            pdf.cell(30, 10, str(val)[:15], 1)
+        pdf.ln()
+
+    pdf_output = pdf.output(dest='S').encode("latin1")
+    return BytesIO(pdf_output)
+
+st.download_button("⬇️ Export PDF", data=export_pdf(filtered_df), file_name="inventaire.pdf", mime="application/pdf")
