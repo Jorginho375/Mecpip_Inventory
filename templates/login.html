@@ -1,0 +1,46 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion - MECPIP</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background-image: url('/static/background.jpg');
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+            height: 100vh;
+        }
+        .login-box {
+            max-width: 400px;
+            margin: 100px auto;
+            background-color: rgba(255,255,255,0.9);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+        .logo {
+            display: block;
+            margin: 0 auto 1rem auto;
+            width: 80px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-box text-center">
+        <img src="/static/logo.jpg" alt="Logo MECPIP" class="logo">
+        <h4>Connexion - Administrateur</h4>
+        <form method="post">
+            <div class="form-group mt-3">
+                <input type="text" name="username" class="form-control" placeholder="Nom d'utilisateur" required>
+            </div>
+            <div class="form-group mt-3">
+                <input type="password" name="password" class="form-control" placeholder="Mot de passe" required>
+            </div>
+            <button class="btn btn-primary w-100 mt-3">Se connecter</button>
+        </form>
+    </div>
+</body>
+</html>
