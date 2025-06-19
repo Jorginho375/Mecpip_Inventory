@@ -32,52 +32,62 @@ def insert_data(name, type_, department, user, purchase_date, status, serial_num
     """, (name, type_, department, user, purchase_date, status, serial_number, antivirus, domain_joined))
     conn.commit()
 
-def get_filtered_data(dept):
-    if dept and dept != "Tous":
-        return pd.read_sql_query("SELECT * FROM computers WHERE department = ?", conn, params=(dept,))
+def get_data():
     return pd.read_sql_query("SELECT * FROM computers", conn)
 
+# Fonction export PDF
 def export_pdf(df):
-    class PDF(FPDF):
-        def header(self):
-            self.image("static/logo.jpg", 10, 8, 25)
-            self.set_font("Arial", 'B', 14)
-            self.cell(0, 10, "INVENTAIRE INFORMATIQUE - MECPIP", ln=True, align="C")
-            self.ln(10)
-
-        def footer(self):
-            self.set_y(-15)
-            self.set_font("Arial", 'I', 8)
-            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-        def render_table(self, df):
-            self.set_font("Arial", size=9)
-            col_widths = [25, 20, 25, 25, 20, 20, 30, 15, 15]
-            headers = ["Nom", "Type", "Département", "Utilisateur", "Achat", "Statut", "N° Série", "AV", "Domaine"]
-            for i, header in enumerate(headers):
-                self.cell(col_widths[i], 8, header, 1)
-            self.ln()
-            for index, row in df.iterrows():
-                row_data = row[1:]
-                for i, item in enumerate(row_data):
-                    self.cell(col_widths[i], 6, str(item)[:25], 1)
-                self.ln()
-
-    pdf = PDF()
+    pdf = FPDF()
     pdf.add_page()
-    pdf.render_table(df)
-    output = BytesIO()
-    pdf.output(output)
-    output.seek(0)
-    return output
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "Inventaire MECPIP", ln=True, align="C")
+    pdf.set_font("Arial", size=10)
+    pdf.ln(10)
+
+    for col in df.columns[1:]:
+        pdf.cell(30, 10, str(col), 1)
+    pdf.ln()
+
+    for _, row in df.iterrows():
+        for val in row[1:]:
+            pdf.cell(30, 10, str(val)[:15], 1)
+        pdf.ln()
+
+    return BytesIO(pdf.output(dest="S").encode("latin1"))
 
 # Sidebar
 st.sidebar.image("static/logo.jpg", width=150)
 st.sidebar.title("📊 Inventaire MECPIP")
 menu = st.sidebar.radio("Navigation", ["Dashboard", "Ajouter un équipement"])
 
+# Dashboard
+if menu == "Dashboard":
+    df = get_data()
+    
+    st.sidebar.header("Filtres")
+    filtre_dept = st.sidebar.multiselect("Filtrer par département", options=df["department"].unique())
+    if filtre_dept:
+        df = df[df["department"].isin(filtre_dept)]
+
+    st.subheader("Liste des équipements")
+    st.dataframe(df, use_container_width=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button("⬇️ Export Excel", data=df.to_excel(index=False, engine='openpyxl'), file_name="inventaire.xlsx")
+
+    with col2:
+        st.download_button("⬇️ Export PDF", data=export_pdf(df), file_name="inventaire.pdf", mime="application/pdf")
+
+    if not df.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(px.pie(df, names="type", title="Répartition par type"))
+        with col2:
+            st.plotly_chart(px.histogram(df, x="department", title="Équipements par département"))
+
 # Formulaire d'ajout
-with st.expander("Ajouter un équipement"):
+if menu == "Ajouter un équipement":
     with st.form("ajout_form"):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -95,60 +105,5 @@ with st.expander("Ajouter un équipement"):
 
         submitted = st.form_submit_button("Enregistrer")
         if submitted:
-            df.loc[len(df)] = [nom, type_, departement, utilisateur, date_achat, statut, serial, antivirus, domaine]
-            st.success("Équipement ajouté avec succès")
-
-# Filtres
-st.sidebar.header("Filtres")
-filtre_dept = st.sidebar.multiselect("Filtrer par département", options=df["Departement"].unique())
-if filtre_dept:
-    filtered_df = df[df["Departement"].isin(filtre_dept)]
-else:
-    filtered_df = df
-
-# Affichage
-st.subheader("Liste des équipements")
-st.dataframe(filtered_df, use_container_width=True)
-
-# Graphiques
-st.subheader("Statistiques")
-if not filtered_df.empty:
-    col1, col2 = st.columns(2)
-    with col1:
-        fig_type = px.pie(filtered_df, names="Type", title="Répartition par type")
-        st.plotly_chart(fig_type)
-    with col2:
-        fig_dept = px.histogram(filtered_df, x="Departement", title="Nombre par département")
-        st.plotly_chart(fig_dept)
-
-# Export Excel
-excel_buffer = BytesIO()
-filtered_df.to_excel(excel_buffer, index=False, engine="openpyxl")
-excel_buffer.seek(0)
-st.download_button("⬇️ Export Excel", data=excel_buffer, file_name="inventaire.xlsx")
-
-# Export PDF
-def export_pdf(df):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Inventaire MECPIP", ln=True, align="C")
-
-    pdf.set_font("Arial", size=10)
-    pdf.ln(10)
-
-    # En-tête
-    for col in df.columns:
-        pdf.cell(30, 10, str(col), 1)
-    pdf.ln()
-
-    # Contenu
-    for _, row in df.iterrows():
-        for val in row:
-            pdf.cell(30, 10, str(val)[:15], 1)
-        pdf.ln()
-
-    pdf_output = pdf.output(dest='S').encode("latin1")
-    return BytesIO(pdf_output)
-
-st.download_button("⬇️ Export PDF", data=export_pdf(filtered_df), file_name="inventaire.pdf", mime="application/pdf")
+            insert_data(nom, type_, departement, utilisateur, str(date_achat), statut, serial, antivirus, domaine)
+            st.success("✅ Équipement ajouté avec succès.")
